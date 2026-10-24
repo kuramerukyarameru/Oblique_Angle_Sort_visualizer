@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>偏角ソート ビジュアライザ</title>
+<style>
+:root{--bg:#f4f7fb;--panel:#fff;--ink:#172b4d;--muted:#61718b;--blue:#1769e0;--line:#d9e2ef;--accent:#f59e0b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+header{padding:22px clamp(16px,4vw,42px);background:#153d72;color:white}header h1{margin:0 0 6px;font-size:clamp(1.4rem,3vw,2rem)}header p{margin:0;color:#d9e8ff}
+main{max-width:1400px;margin:auto;padding:18px;display:grid;gap:16px}.layout{display:grid;grid-template-columns:minmax(260px,330px) minmax(320px,1fr);gap:16px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:0 3px 12px #1b365b0a}
+h2{font-size:1.05rem;margin:0 0 12px}label{display:block;font-weight:650;font-size:.9rem;margin:12px 0 6px}input,textarea,select,button{font:inherit}input,textarea,select{width:100%;border:1px solid #cbd7e7;border-radius:8px;padding:9px 10px;background:white;color:var(--ink)}textarea{min-height:205px;resize:vertical;font-family:ui-monospace,monospace;line-height:1.55}.hint{font-size:.82rem;color:var(--muted);line-height:1.5;margin:6px 0}
+button{border:0;border-radius:9px;padding:10px 13px;cursor:pointer;font-weight:700}.primary{background:var(--blue);color:white}.secondary{background:#eaf0f8;color:var(--ink)}button:disabled{opacity:.45;cursor:not-allowed}.buttons{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.buttons button{flex:1}.controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.controls button{padding:8px 12px}.status{font-size:.9rem;color:var(--muted);margin:10px 0 0;min-height:1.4em}
+.plotwrap{min-height:380px;display:flex;align-items:center;justify-content:center;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}svg{width:100%;height:auto;max-height:600px;display:block}.rightgrid{display:grid;grid-template-columns:1fr;gap:16px}.tablewrap{overflow:auto;max-height:370px}table{border-collapse:collapse;width:100%;font-size:.9rem}th,td{text-align:left;padding:9px 8px;border-bottom:1px solid #e8edf5;white-space:nowrap}th{position:sticky;top:0;background:#f5f8fc}tr.active{background:#fff4d8}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:7px}.stepinfo{background:#f0f6ff;border:1px solid #d8e7ff;padding:12px;border-radius:10px;line-height:1.6}.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.82rem;color:var(--muted);margin-top:9px}.legend span{display:flex;align-items:center;gap:5px}.swatch{width:10px;height:10px;border-radius:50%}.explain{line-height:1.7}.code{white-space:pre-wrap;background:#10213a;color:#e4efff;border-radius:10px;padding:14px;overflow:auto;font: .85rem/1.55 ui-monospace,monospace}
+@media(min-width:1050px){.layout{grid-template-columns:300px minmax(350px,1fr) minmax(280px,.8fr)}.rightgrid{display:contents}.results{grid-column:3}.plotpanel{grid-column:2;grid-row:1}.entry{grid-column:1;grid-row:1}}
+@media(max-width:760px){main{padding:10px}.layout{grid-template-columns:1fr}.plotwrap{min-height:280px}}
+</style>
+</head>
+<body>
+<header><h1>偏角ソート ビジュアライザ</h1><p>点の座標を入力して、原点から見た偏角で並べ替える過程を確認できます。</p></header>
+<main>
+<section class="layout">
+ <section class="panel entry">
+  <h2>1. 点を入力</h2>
+  <label for="points">座標 (x, y) — 1行に1点</label>
+  <textarea id="points" spellcheck="false">3, 1
+1, 3
+-1, 2
+-3, 1
+-2, -1
+1, -2
+3, -1
+2, 2</textarea>
+  <p class="hint">整数・小数に対応。区切りはカンマまたは空白。原点 (0, 0) は除いてください。</p>
+  <label for="method">並べ替え方法</label>
+  <select id="method"><option value="angle">atan2（角度を計算）</option><option value="cross">外積（半平面 + 外積）</option></select>
+  <label for="start">角度の基準</label>
+  <select id="start"><option value="positive">正の x 軸から反時計回り（0°〜360°）</option><option value="signed">atan2 の角度（−180°〜180°）</option></select>
+  <div class="buttons"><button class="primary" id="run">ソートする</button><button class="secondary" id="reset">サンプルに戻す</button></div>
+  <p class="status" id="error" role="status"></p>
+ </section>
+ <section class="panel plotpanel">
+  <h2>2. 座標平面</h2>
+  <div class="plotwrap"><svg id="plot" viewBox="0 0 600 500" role="img" aria-label="座標平面に描画した点"></svg></div>
+  <div class="legend"><span><i class="swatch" style="background:#1769e0"></i>未選択の点</span><span><i class="swatch" style="background:#f59e0b"></i>現在の点</span><span><i class="swatch" style="background:#16a085"></i>処理済み</span></div>
+ </section>
+ <section class="panel results">
+  <h2>3. ソート結果</h2>
+  <div class="controls"><button class="secondary" id="prev">← 前へ</button><button class="primary" id="next">次へ →</button><button class="secondary" id="all">最後まで</button></div>
+  <p class="status" id="progress">「次へ」で1点ずつ確認できます。</p>
+  <div class="stepinfo" id="stepinfo">ソート後の順番を表示します。現在の点を選ぶと、角度と比較の考え方を確認できます。</div>
+  <div class="tablewrap"><table><thead><tr><th>順</th><th>座標</th><th>偏角</th><th>距離²</th></tr></thead><tbody id="tbody"></tbody></table></div>
+ </section>
+</section>
+<section class="panel explain">
+ <h2>偏角ソートのポイント</h2>
+ <p><b>atan2 方式：</b> 各点の角度を <code>atan2(y, x)</code> で求め、角度の小さい順に並べます。実装しやすい一方、浮動小数点の誤差に注意します。</p>
+ <p><b>外積方式：</b> ベクトル <code>a=(x₁,y₁)</code>、<code>b=(x₂,y₂)</code> に対して <code>cross = x₁y₂ − y₁x₂</code> を計算します。半平面で角度の範囲を分けたうえで、外積の符号から順序を判定できます。同じ方向の点は距離²で並べることができます。</p>
+ <p><b>注意：</b> このツールでは、正の x 軸から反時計回りの順に並べます。原点の点は偏角が定義できないため入力対象外です。凸包などで使う場合は、基準点や同一直線上の点の扱いに応じて比較関数を調整してください。</p>
+ <h2>比較関数の C++ 例（外積方式）</h2>
+ <pre class="code">struct Point { long long x, y; };
+
+int half(Point a) {
+    // 上半平面（正のx軸を含む）を先にする
+    return (a.y > 0 || (a.y == 0 && a.x >= 0)) ? 0 : 1;
+}
+
+bool cmp(Point a, Point b) {
+    if (half(a) != half(b)) return half(a) < half(b);
+    long long cr = a.x * b.y - a.y * b.x;
+    if (cr != 0) return cr > 0; // a の方が反時計回りで先
+    return a.x*a.x + a.y*a.y < b.x*b.x + b.y*b.y;
+}</pre>
+</section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const sample = `3, 1
+1, 3
+-1, 2
+-3, 1
+-2, -1
+1, -2
+3, -1
+2, 2`;
+let points=[], sorted=[], step=-1;
+const palette=['#1769e0','#8b5cf6','#0d9488','#ea580c','#db2777','#0891b2','#65a30d','#d97706','#4f46e5','#dc2626'];
+function parsePoints(){
+ const lines=$('points').value.trim().split(/\n+/).filter(x=>x.trim());
+ const out=[];
+ for(let i=0;i<lines.length;i++){
+  const nums=lines[i].trim().split(/[,\s]+/).map(Number);
+  if(nums.length!==2||nums.some(v=>!Number.isFinite(v))) throw new Error(`${i+1}行目を「x, y」の形式で入力してください。`);
+  if(nums[0]===0&&nums[1]===0) throw new Error(`${i+1}行目は原点です。原点の偏角は定義できないため除いてください。`);
+  out.push({x:nums[0],y:nums[1],id:i});
+ }
+ if(out.length<1) throw new Error('点を1つ以上入力してください。');
+ if(out.length>300) throw new Error('点は300個までにしてください。');
+ return out;
+}
+function angle(p){let a=Math.atan2(p.y,p.x)*180/Math.PI;if($('start').value==='positive'&&a<0)a+=360;return a;}
+function half(p){return (p.y>0||(p.y===0&&p.x>=0))?0:1;}
+function compare(a,b){
+ if($('method').value==='cross'){
+  const ha=half(a),hb=half(b);if(ha!==hb)return ha-hb;
+  const c=a.x*b.y-a.y*b.x;if(Math.abs(c)>1e-10)return c>0?-1:1;
+  return (a.x*a.x+a.y*a.y)-(b.x*b.x+b.y*b.y);
+ }
+ const aa=angle(a),ab=angle(b);if(Math.abs(aa-ab)>1e-10)return aa-ab;
+ return (a.x*a.x+a.y*a.y)-(b.x*b.x+b.y*b.y);
+}
+function fmt(n){return Number(n.toFixed(3)).toString();}
+function draw(){
+ const svg=$('plot');const W=600,H=500,pad=48;
+ const xs=points.map(p=>p.x),ys=points.map(p=>p.y);
+ let xmin=Math.min(0,...xs),xmax=Math.max(0,...xs),ymin=Math.min(0,...ys),ymax=Math.max(0,...ys);
+ if(xmin===xmax){xmin-=1;xmax+=1}if(ymin===ymax){ymin-=1;ymax+=1}
+ const dx=xmax-xmin,dy=ymax-ymin; xmin-=dx*.18;xmax+=dx*.18;ymin-=dy*.18;ymax+=dy*.18;
+ const scale=Math.min((W-2*pad)/(xmax-xmin),(H-2*pad)/(ymax-ymin));
+ const ox=W/2-(xmin+xmax)/2*scale,oy=H/2+(ymin+ymax)/2*scale;
+ const X=x=>ox+x*scale,Y=y=>oy-y*scale;
+ let s='';
+ const stepX=Math.pow(10,Math.floor(Math.log10((xmax-xmin)/7)));const unitX=stepX*(Math.ceil((xmax-xmin)/stepX/7)||1);
+ const stepY=Math.pow(10,Math.floor(Math.log10((ymax-ymin)/7)));const unitY=stepY*(Math.ceil((ymax-ymin)/stepY/7)||1);
+ for(let x=Math.ceil(xmin/unitX)*unitX;x<=xmax;x+=unitX){s+=`<line x1="${X(x)}" y1="${pad/2}" x2="${X(x)}" y2="${H-pad/2}" stroke="#e7edf5"/><text x="${X(x)}" y="${Math.min(H-8,Math.max(15,Y(0)+18))}" text-anchor="middle" font-size="11" fill="#64748b">${fmt(x)}</text>`}
+ for(let y=Math.ceil(ymin/unitY)*unitY;y<=ymax;y+=unitY){s+=`<line x1="${pad/2}" y1="${Y(y)}" x2="${W-pad/2}" y2="${Y(y)}" stroke="#e7edf5"/><text x="${Math.min(W-15,Math.max(12,X(0)-9))}" y="${Y(y)+4}" text-anchor="end" font-size="11" fill="#64748b">${fmt(y)}</text>`}
+ if(xmin<=0&&xmax>=0)s+=`<line x1="${X(0)}" y1="${pad/2}" x2="${X(0)}" y2="${H-pad/2}" stroke="#64748b" stroke-width="1.6"/>`;
+ if(ymin<=0&&ymax>=0)s+=`<line x1="${pad/2}" y1="${Y(0)}" x2="${W-pad/2}" y2="${Y(0)}" stroke="#64748b" stroke-width="1.6"/>`;
+ // draw radial vectors from origin
+ points.forEach((p,i)=>{
+  const done=sorted.findIndex(q=>q.id===p.id);let col='#1769e0',r=5;
+  if(step>=0&&done>=0&&done<=step){col=done===step?'#f59e0b':'#16a085';r=done===step?7:5.5}
+  s+=`<line x1="${X(0)}" y1="${Y(0)}" x2="${X(p.x)}" y2="${Y(p.y)}" stroke="${col}" stroke-opacity=".35" stroke-width="1.5"/>`;
+  s+=`<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="${r}" fill="${col}" stroke="white" stroke-width="1.5"/>`;
+  s+=`<text x="${X(p.x)+8}" y="${Y(p.y)-8}" font-size="12" fill="${col}" font-weight="650">P${p.id+1} (${fmt(p.x)}, ${fmt(p.y)})</text>`;
+ });
+ s+=`<circle cx="${X(0)}" cy="${Y(0)}" r="4" fill="#172b4d"/><text x="${X(0)+7}" y="${Y(0)+15}" font-size="11" fill="#172b4d">O</text>`;
+ svg.innerHTML=s;
+}
+function renderTable(){
+ $('tbody').innerHTML=sorted.map((p,i)=>`<tr class="${i===step?'active':''}" data-i="${i}"><td>${i+1}</td><td>(${fmt(p.x)}, ${fmt(p.y)})</td><td>${fmt(angle(p))}°</td><td>${fmt(p.x*p.x+p.y*p.y)}</td></tr>`).join('');
+ $('tbody').querySelectorAll('tr').forEach(tr=>tr.addEventListener('click',()=>{step=Number(tr.dataset.i);render();}));
+ $('prev').disabled=step<0;$('next').disabled=step>=sorted.length-1;$('all').disabled=step>=sorted.length-1;
+ $('progress').textContent=step<0?'まだステップを選んでいません。':`ステップ ${step+1} / ${sorted.length}`;
+ if(step<0)$('stepinfo').textContent='「次へ」でソート順を1点ずつ確認します。';
+ else {const p=sorted[step];$('stepinfo').innerHTML=`<b>現在の点：P${p.id+1} = (${fmt(p.x)}, ${fmt(p.y)})</b><br>偏角：${fmt(angle(p))}°<br>原点からの距離²：${fmt(p.x*p.x+p.y*p.y)}<br>${step===0?'この点がソート順の先頭です。':`直前の点 P${sorted[step-1].id+1} の次に配置されます。`}`}
+}
+function render(){draw();renderTable();}
+function run(){
+ try{points=parsePoints();sorted=points.slice().sort(compare);step=-1;$('error').textContent='';render();}
+ catch(e){$('error').textContent=e.message;}
+}
+$('run').addEventListener('click',run);
+$('reset').addEventListener('click',()=>{$('points').value=sample;$('method').value='angle';$('start').value='positive';run()});
+$('prev').addEventListener('click',()=>{step=Math.max(-1,step-1);render()});
+$('next').addEventListener('click',()=>{step=Math.min(sorted.length-1,step+1);render()});
+$('all').addEventListener('click',()=>{step=sorted.length-1;render()});
+$('method').addEventListener('change',run);$('start').addEventListener('change',run);
+run();
+</script>
+</body>
+</html>

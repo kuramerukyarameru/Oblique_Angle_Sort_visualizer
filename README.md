@@ -1,2 +1,3 @@
 # Oblique_Angle_Sort_visualizer
-by AI
+
+AIで偏角ソートのビジュアライザを作ってみました。
